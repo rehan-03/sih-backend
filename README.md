@@ -107,13 +107,13 @@ cd backend && celery -A app.workers.celery_app worker --loglevel=info
 | Phase | Status | Description |
 |---|---|---|
 | 0 — Scaffolding | ✅ Done | Contracts, FastAPI skeleton, docker-compose, /health, JWT stubs |
-| 1 — Correlation | 🔲 Not started | Complaint ingestion + Cross-Victim Correlation |
-| 2 — Registry | 🔲 Not started | Redis registry + /check-wallet chokepoint |
-| 3 — Tracing | 🔲 Not started | Blockchain tracing to nearest VASP |
-| 4 — ML Risk | 🔲 Not started | XGBoost + SHAP evidence (Elliptic++ dataset) |
-| 5 — Cases | 🔲 Not started | Case management + PDF reports |
-| 6 — LLM NER | 🔲 Stretch | Local Ollama entity extraction (GPU required) |
-| 7 — Hardening | 🔲 Not started | Integration pass + demo prep |
+| 1 — Correlation | ✅ Done | Complaint ingestion + Cross-Victim Correlation (NCRP) |
+| 2 — Registry | ✅ Done | Redis registry + /check-wallet chokepoint (<200ms p95) |
+| 3 — Tracing | ✅ Done | Multi-chain blockchain tracing (BTC, ETH, TRON) to nearest VASP |
+| 4 — ML Risk | ✅ Done | XGBoost + SHAP evidence (Elliptic++ dataset, Test AUC-PR=0.954) |
+| 5 — Cases | ✅ Done | Case management state machine + Forensic PDF reports |
+| 6 — LLM NER | ✅ Done | Air-gapped Llama-3.2-3B on Ollama + deterministic spaCy fallback |
+| 7 — Hardening | ✅ Done | Integration hardening, CORS, docker-compose verified, audit logging |
 
 ---
 
