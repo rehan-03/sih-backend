@@ -25,6 +25,8 @@ btc_explorer = BitcoinExplorer()
 eth_explorer = EthereumExplorer()
 tron_explorer = TronExplorer()
 
+MAX_GRAPH_TRANSFERS = 50
+
 
 async def _build_wallet_graph_async(address: str, chain: str, max_depth: int = 2) -> dict:
     """
@@ -44,11 +46,11 @@ async def _build_wallet_graph_async(address: str, chain: str, max_depth: int = 2
 
         # 1. Fetch transactions via appropriate explorer
         if chain_upper == Chain.BTC.value:
-            txs = await btc_explorer.get_transactions(curr_addr, limit=15)
+            txs = await btc_explorer.get_transactions(curr_addr, limit=MAX_GRAPH_TRANSFERS)
         elif chain_upper == Chain.ETH.value:
-            txs = await eth_explorer.get_transactions(curr_addr, limit=15)
+            txs = await eth_explorer.get_transactions(curr_addr, limit=MAX_GRAPH_TRANSFERS)
         elif chain_upper == Chain.TRON.value:
-            txs = await tron_explorer.get_transactions(curr_addr, limit=15)
+            txs = await tron_explorer.get_transactions(curr_addr, limit=MAX_GRAPH_TRANSFERS)
         else:
             logger.info("unsupported_chain_for_graph_builder", extra={"chain": chain})
             break

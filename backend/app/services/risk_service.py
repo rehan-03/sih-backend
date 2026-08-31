@@ -14,12 +14,14 @@ from app.schemas.common import Chain
 from app.schemas.wallet import RiskResponse
 from app.services.explorers.btc_explorer import BitcoinExplorer
 from app.services.explorers.eth_explorer import EthereumExplorer
+from app.services.explorers.tron_explorer import TronExplorer
 from app.services.tracing_service import get_or_create_wallet
 
 logger = logging.getLogger(__name__)
 
 btc_explorer = BitcoinExplorer()
 eth_explorer = EthereumExplorer()
+tron_explorer = TronExplorer()
 
 
 async def evaluate_wallet_risk(
@@ -37,6 +39,8 @@ async def evaluate_wallet_risk(
         txs = await btc_explorer.get_transactions(address, limit=25)
     elif chain == Chain.ETH:
         txs = await eth_explorer.get_transactions(address, limit=25)
+    elif chain == Chain.TRON:
+        txs = await tron_explorer.get_transactions(address, limit=25)
     else:
         txs = []
 

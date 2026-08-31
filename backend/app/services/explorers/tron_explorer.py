@@ -82,24 +82,34 @@ class TronExplorer(BlockchainExplorer):
             # If toAddress is missing, check contract/trigger_info parameter
             trigger_info = item.get("trigger_info") or {}
             params = trigger_info.get("parameter") or {}
-            if not to_addr:
-                to_addr = params.get("to", "")
+            contract_data = item.get("contractData") or {}
+            if params.get("to"):
+                to_addr = params["to"]
+            elif contract_data.get("to_address"):
+                to_addr = contract_data["to_address"]
 
-            # Parse amount
-            raw_amt = float(item.get("amount", 0) or 0)
             token_info = item.get("tokenInfo") or {}
-            decimals = int(token_info.get("tokenDecimal", 6) or 6)
+            try:
+                decimals = max(0, int(token_info.get("tokenDecimal", 6) or 6))
+            except (ValueError, TypeError):
+                decimals = 6
 
-            if raw_amt > 0:
-                amount = round(raw_amt / (10 ** decimals), 6)
-            elif "value" in params:
+            # Tronscan reports contract transfers with top-level amount=0;
+            # the actual value is in trigger_info.parameter.value or contractData.amount.
+            amount = 0.0
+            for raw_amount in (
+                item.get("amount"),
+                contract_data.get("amount"),
+                params.get("value"),
+                params.get("amount"),
+            ):
                 try:
-                    param_val = float(params["value"])
-                    amount = round(param_val / (10 ** decimals), 6)
-                except (ValueError, TypeError):
-                    amount = 0.0
-            else:
-                amount = 0.0
+                    parsed_amount = float(raw_amount or 0)
+                    if 0 < parsed_amount < 1e15:
+                        amount = round(parsed_amount / (10 ** decimals), 6)
+                        break
+                except (ValueError, TypeError, OverflowError):
+                    continue
 
             # Known VASP attribution
             vasp_from = lookup_known_vasp(from_addr)

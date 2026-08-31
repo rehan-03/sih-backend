@@ -21,6 +21,12 @@ logger = logging.getLogger(__name__)
 _explainer_instance = None
 
 
+def clear_explainer_cache():
+    """Clear cached TreeExplainer instance."""
+    global _explainer_instance
+    _explainer_instance = None
+
+
 def get_explainer():
     """Singleton SHAP TreeExplainer instance."""
     global _explainer_instance

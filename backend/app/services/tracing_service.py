@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 import logging
 from typing import List, Optional
 
+from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -24,6 +25,8 @@ from app.services.explorers.tron_explorer import TronExplorer
 from app.services.explorers.known_vasps import lookup_known_vasp
 
 logger = logging.getLogger(__name__)
+
+MAX_TRACE_TRANSFERS = 50
 
 btc_explorer = BitcoinExplorer()
 eth_explorer = EthereumExplorer()
@@ -75,51 +78,31 @@ async def trace_wallet_to_vasp(
     hops: List[Hop] = []
     nearest_vasp: Optional[str] = None
 
-    # 1. Try querying existing graph in Neo4j
-    try:
-        records = await run_query(
-            cypher.GET_WALLET_HOPS,
-            {"address": address, "chain": chain.value, "limit": 25},
+    if chain not in (Chain.BTC, Chain.ETH, Chain.TRON):
+        logger.warning("unsupported_chain_for_tracing", extra={"chain": chain.value, "address": address})
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "error": {
+                    "code": "UNSUPPORTED_CHAIN",
+                    "message": f"Blockchain network '{chain.value}' is not supported for tracing. Supported networks: BTC, ETH, TRON.",
+                    "details": {"chain": chain.value},
+                }
+            },
         )
-        for r in records:
-            dt = datetime.fromisoformat(r["timestamp"].replace("Z", "+00:00")) if r.get("timestamp") else datetime.now(timezone.utc)
-            hops.append(
-                Hop(
-                    from_address=r["from_address"],
-                    to_address=r["to_address"],
-                    tx_hash=r["tx_hash"],
-                    amount=float(r["amount"]),
-                    chain=chain,
-                    timestamp=dt,
-                )
-            )
-            if not nearest_vasp and r.get("vasp_name"):
-                nearest_vasp = r["vasp_name"]
-    except Exception as e:
-        logger.warning("neo4j_hops_query_failed", extra={"error": str(e)})
 
-    # 2. If Neo4j has no hops yet, fetch live from blockchain explorer
-    if not hops:
-        if chain == Chain.BTC:
-            raw_txs = await btc_explorer.get_transactions(address, limit=15)
-        elif chain == Chain.ETH:
-            raw_txs = await eth_explorer.get_transactions(address, limit=15)
-        elif chain == Chain.TRON:
-            raw_txs = await tron_explorer.get_transactions(address, limit=15)
-        else:
-            from fastapi import HTTPException, status
-            logger.warning("unsupported_chain_for_tracing", extra={"chain": chain.value, "address": address})
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail={
-                    "error": {
-                        "code": "UNSUPPORTED_CHAIN",
-                        "message": f"Blockchain network '{chain.value}' is not supported for tracing. Supported networks: BTC, ETH, TRON.",
-                        "details": {"chain": chain.value},
-                    }
-                },
-            )
+    # Live explorer data is authoritative for the queried wallet so cached graph
+    # edges cannot mask current amounts or return stale fixed-size results.
+    if chain == Chain.BTC:
+        raw_txs = await btc_explorer.get_transactions(address, limit=MAX_TRACE_TRANSFERS)
+    elif chain == Chain.ETH:
+        raw_txs = await eth_explorer.get_transactions(address, limit=MAX_TRACE_TRANSFERS)
+    elif chain == Chain.TRON:
+        raw_txs = await tron_explorer.get_transactions(address, limit=MAX_TRACE_TRANSFERS)
+    else:
+        raw_txs = []
 
+    if raw_txs:
         for tx in raw_txs:
             hops.append(
                 Hop(
@@ -131,15 +114,38 @@ async def trace_wallet_to_vasp(
                     timestamp=tx.timestamp,
                 )
             )
-            # Check VASP destination
+            if not nearest_vasp and tx.vasp_tag:
+                nearest_vasp = tx.vasp_tag
             if not nearest_vasp:
-                if tx.vasp_tag:
-                    nearest_vasp = tx.vasp_tag
-                else:
-                    v_match = lookup_known_vasp(tx.to_address)
-                    if v_match:
-                        nearest_vasp = v_match[0]
+                v_match = lookup_known_vasp(tx.to_address)
+                if v_match:
+                    nearest_vasp = v_match[0]
 
+    else:
+        # Fall back to the persisted graph only when the explorer has no data.
+        try:
+            records = await run_query(
+                cypher.GET_WALLET_HOPS,
+                {"address": address, "chain": chain.value, "limit": MAX_TRACE_TRANSFERS},
+            )
+            for r in records:
+                dt = datetime.fromisoformat(r["timestamp"].replace("Z", "+00:00")) if r.get("timestamp") else datetime.now(timezone.utc)
+                hops.append(
+                    Hop(
+                        from_address=r["from_address"],
+                        to_address=r["to_address"],
+                        tx_hash=r["tx_hash"],
+                        amount=float(r["amount"]),
+                        chain=chain,
+                        timestamp=dt,
+                    )
+                )
+                if not nearest_vasp and r.get("vasp_name"):
+                    nearest_vasp = r["vasp_name"]
+        except Exception as e:
+            logger.warning("neo4j_hops_query_failed", extra={"error": str(e)})
+
+    if raw_txs:
         # Trigger async background Neo4j graph builder task for deep multi-hop traversal
         try:
             from app.workers.tasks.graph_builder import build_graph_task

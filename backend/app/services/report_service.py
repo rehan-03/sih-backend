@@ -62,12 +62,6 @@ async def generate_case_pdf_report(db: AsyncSession, case_id: uuid.UUID) -> byte
     wallet_res = await db.execute(wallet_stmt)
     linked_wallets = list(wallet_res.scalars().all())
 
-    # If no explicitly linked wallets, fetch any wallets from active complaints
-    if not linked_wallets:
-        fallback_stmt = select(Wallet).limit(2)
-        fallback_res = await db.execute(fallback_stmt)
-        linked_wallets = list(fallback_res.scalars().all())
-
     # 3. Gather live Phase 1, Phase 3, Phase 4 evidence for each wallet
     wallet_evidence = []
     for w in linked_wallets:

@@ -50,3 +50,20 @@ If you want one more signal beyond the held-out split: pull a handful of address
 - **Air-Gap Guarantee:** FIR/complaint narrative text is processed strictly on the local Ollama instance without external outbound network calls.
 - **Fallback:** Deterministic spaCy/regex entity extraction when Ollama is unavailable or JSON parsing fails.
 
+---
+
+## Known Model Limitations & Defense-in-Depth Architecture
+
+1. **Historical Temporal Window Drift**:
+   - Elliptic++ covers a fixed historical Bitcoin time window (time steps 1..49, ~2017–2018). Live, present-day wallet behavior in 2024–2026 differs significantly in fee dynamics, layer-2/mixing patterns, and transaction structures.
+   - This temporal drift explains why a real modern sanctioned exchange address (Garantex, score `0.488`) can score lower than a historically unique edge case (Satoshi Genesis, score `0.513`) on pure topological features.
+2. **Mitigating Multi-Layer Architecture (Defense-in-Depth)**:
+   - Pure structural ML scoring is designed to identify anomalous topology on unflagged, novel addresses.
+   - Known-bad entities, OFAC sanctioned addresses, and NCRP-reported scam clusters are intercepted deterministically via Phase 2's Redis Risk Registry (`/check-wallet`) and Phase 1's victim correlation layer (`/correlate`), guaranteeing hard blocks (`1.00` risk / `block` decision) regardless of the ML score.
+3. **Validation FPR vs. Recall Trade-Off**:
+   - On the real Elliptic++ dataset, the `<1.0%` FPR target is only reachable at extreme thresholds ($\ge 0.95$, FPR `0.65%`), where Recall drops below 50% (`49.66%`).
+   - Threshold **`0.90`** was selected on the validation slice as the optimal operational trade-off (Validation FPR: **`1.55%`**, Validation Recall: **`65.40%`**; Test Holdout FPR: **`3.60%`**, Test Recall: **`41.54%`**).
+4. **Within-Dataset Temporal Drift & Leakage Prevention**:
+   - Test-holdout performance (Recall 41.5%, FPR 3.6%) is meaningfully weaker than validation-slice performance (Recall 65.4%, FPR 1.55%), consistent with known within-dataset temporal drift in Elliptic-family data -- illicit transaction patterns in later time steps differ from earlier ones even within the dataset's own history. This is disclosed as a generalization characteristic of the benchmark, not a bug, and no further threshold tuning against the test set was performed to avoid re-introducing test-set leakage.
+
+
